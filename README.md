@@ -42,4 +42,4 @@ alegria_sonora/
 
 ## Licencia
 
-© 2026 Alegría Sonora. Este proyecto está bajo la licencia [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+© 2026 Alergia Sonora. Este proyecto está bajo la licencia [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
