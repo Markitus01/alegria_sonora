@@ -39,3 +39,7 @@ alegria_sonora/
 └── studio/
     └── schemaTypes/        # schemas del CMS (edicion, artista, actuacion...)
 ```
+
+## Licencia
+
+© 2026 Alegría Sonora. Este proyecto está bajo la licencia [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
