@@ -1,6 +1,9 @@
 <script>
+    import Intro from '$lib/components/Intro.svelte'
     let { data } = $props()  // le metemos los datos del page.server.js
 </script>
+
+<Intro /> <!-- El componente intro, está en src/lib/components -->
 
 <pre>
     <!--
