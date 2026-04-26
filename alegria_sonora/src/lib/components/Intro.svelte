@@ -1,10 +1,10 @@
-<script>
+<script lang="ts">
     import { onMount } from 'svelte'
     import gsap from 'gsap'
     import { redimensionar, dibujarParticulas, dibujarParticulasLetras, dibujarScanlines } from '$lib/animations/intro.js'
 
     // referencia al elemento canvas del DOM
-    let canvas
+    let canvas = $state() as HTMLCanvasElement
     let visible = true
     // chorprecha jeje
     const linea1 = Math.random() < 0.001 ? 'ALEGRÍA' : 'ALERGIA'
@@ -14,16 +14,18 @@
     onMount(() =>
     {
         // obtenemos el contexto 2D del canvas para poder dibujar
-        const ctx = canvas.getContext('2d')
+        const ctx = canvas.getContext('2d') as CanvasRenderingContext2D
 
+        // guardamos la refe para eliminarla en el cleaunup
+        const onResize = () => redimensionar(canvas)
         // ejecutamos al montar y cada vez que se redimensione la ventana
-        redimensionar(canvas)
-        window.addEventListener('resize', () => redimensionar(canvas))
+        onResize()
+        window.addEventListener('resize', onResize)
 
         let ratonX = -1000
         let ratonY = -1000
 
-        canvas.addEventListener('mousemove', (e) =>
+        canvas.addEventListener('mousemove', (e: MouseEvent) =>
         {
             ratonX = e.clientX
             ratonY = e.clientY
@@ -47,7 +49,7 @@
 
         // canvas oculto donde dibujamos el texto para leer sus píxeles
         const canvasOculto = document.createElement('canvas')
-        const ctxOculto = canvasOculto.getContext('2d')
+        const ctxOculto = canvasOculto.getContext('2d') as CanvasRenderingContext2D
         canvasOculto.width = canvas.width
         canvasOculto.height = canvas.height
 
@@ -107,8 +109,8 @@
             })
         })
 
-        // gsap.ticker es el bucle de animación de GSAP
-        gsap.ticker.add(() =>
+        // guardamos referencia, gsap.ticker.remove necesita la misma que se pasa al add
+        const onTick = () =>
         {
             // limpiamos el canvas antes de cada frame
             ctx.clearRect(0, 0, canvas.width, canvas.height)
@@ -116,7 +118,16 @@
             dibujarParticulas(ctx, canvas, particulas)
             dibujarParticulasLetras(ctx, particulasLetras, ratonX, ratonY)
             dibujarScanlines(ctx, canvas)
-        })
+        }
+
+        gsap.ticker.add(onTick) // gsap.ticker es el bucle de animación de GSAP
+
+        // el return limpia los listeners sobre objetos globales al destruirse el componente
+        return () =>
+        {
+            window.removeEventListener('resize', onResize)
+            gsap.ticker.remove(onTick)
+        }
     })
 </script>
 
