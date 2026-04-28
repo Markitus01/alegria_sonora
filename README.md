@@ -41,5 +41,5 @@ alegria_sonora/
 ```
 
 ## Licencia
-
-© 2026 Alergia Sonora. Este proyecto está bajo la licencia [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+© 2026 Mark Sandiumenge Villoria. El código de este proyecto está bajo licencia [MIT + Commons Clause](https://commonsclause.com/), lo que permite su uso libre pero prohíbe su uso comercial.  
+El contenido editorial es propiedad de sus respectivos autores.
