@@ -1,7 +1,7 @@
 {
 	"name": "alegria-sonora",
 	"private": true,
-	"version": "0.0.1",
+	"version": "0.0.2",
 	"type": "module",
 	"scripts": {
 		"dev": "vite dev",
@@ -37,6 +37,7 @@
 	},
 	"dependencies": {
 		"@sanity/client": "^7.22.0",
-		"gsap": "^3.15.0"
+		"gsap": "^3.15.0",
+		"pixi.js": "^8.18.1"
 	}
 }

@@ -1,128 +1,367 @@
+import { Application, Graphics, RenderTexture, Sprite, Container, ParticleContainer, Particle, Texture } from 'pixi.js'
 import gsap from 'gsap'
 
-
-/** 
- * @typedef {{ x: number, y: number, radio: number, vx: number, vy: number, opacidad: number, rotacion: number }} Particula
- * @typedef {{ x: number, y: number, destinoX: number, destinoY: number, progreso: number, opacidad: number, offsetX: number, offsetY: number, fase: number }} PartiiculaLetra
+/**
+ * @typedef {{ particle: Particle, vx: number, vy: number, rotSpeed: number }} Particula
+ * @typedef {{ spriteGlow: Sprite, spriteCore: Sprite, x: number, y: number, destinoX: number, destinoY: number, progreso: number, opacidad: number, offsetX: number, offsetY: number, fase: number }} PartiiculaLetra
  */
+
+// === TEXTURAS BASE (SE GENERAN UNA SOLA VEZ) ================================
 
 /**
- * Ajusta el canvas al tamaño real de la ventana
- * necesario porque CSS width/height no es lo mismo que los píxeles reales del canvas :3
- * @param {HTMLCanvasElement} canvas
+ * Crea la textura de un triángulo pequeño para las partículas de fondo.
+ * Se reutiliza para todos los Particle del ParticleContainer.
+ * @param {Application} app
+ * @returns {Texture}
  */
-export function redimensionar(canvas)
+function crearTexturaTriangulo(app)
 {
-    canvas.width = window.innerWidth
-    canvas.height = window.innerHeight
+    const g = new Graphics()
+    g.poly([0, -4, 3.46, 2, -3.46, 2]).fill(0xdcdcdc)
+    const tex = app.renderer.generateTexture(g)
+    g.destroy()
+    return tex
 }
 
 /**
- * Dibuja y mueve las partículas triangulares de fondo
- * @param {CanvasRenderingContext2D} ctx
- * @param {HTMLCanvasElement} canvas
- * @param {Particula[]} particulas
+ * Crea la textura de un cuadrado difuso (glow) y otro nítido (core)
+ * para las partículas de letra, evitando shadowBlur en Canvas 2D.
+ * @param {Application} app
+ * @returns {{ texGlow: Texture, texCore: Texture }}
  */
-export function dibujarParticulas(ctx, canvas, particulas)
+function crearTexturasLetra(app)
 {
-    particulas.forEach(p =>
+    // glow: cuadrado grande y semitransparente
+    const gGlow = new Graphics()
+    gGlow.rect(0, 0, 10, 10).fill(0xffffff)
+    const texGlow = app.renderer.generateTexture(gGlow)
+    gGlow.destroy()
+
+    // core: cuadrado pequeño y nítido
+    const gCore = new Graphics()
+    gCore.rect(0, 0, 4, 4).fill(0xffffff)
+    const texCore = app.renderer.generateTexture(gCore)
+    gCore.destroy()
+
+    return { texGlow, texCore }
+}
+
+/**
+ * Genera la textura de scanlines CRT una sola vez en un RenderTexture.
+ * En el loop es un sprite estático — un único draw call.
+ * @param {Application} app
+ * @returns {Sprite}
+ */
+function crearSpriteScanlines(app)
+{
+    const { width, height } = app.screen
+    const rt = RenderTexture.create({ width, height })
+
+    const g = new Graphics()
+    for (let y = 0; y < height; y += 4)
+        g.rect(0, y, width, 2).fill({ color: 0x000000, alpha: 0.15 })
+
+    app.renderer.render({ container: g, target: rt })
+    g.destroy()
+
+    return new Sprite(rt)
+}
+
+// === SETUP DE PARTÍCULAS DE FONDO ==========================================
+
+/**
+ * Crea el ParticleContainer con las partículas triangulares de fondo.
+ * ParticleContainer hace un único draw call en GPU para todos los Particle.
+ * @param {Application} app
+ * @param {Texture} texTriangulo
+ * @param {number} NUM
+ * @returns {{ container: ParticleContainer, particulas: Particula[] }}
+ */
+function crearParticulasFondo(app, texTriangulo, NUM)
+{
+    const { width, height } = app.screen
+    const container = new ParticleContainer()
+
+    const particulas = Array.from({ length: NUM }, () =>
     {
-        // movemos la partícula
-        p.x += p.vx
-        p.y += p.vy
+        const escala   = Math.random() * 0.75 + 0.25
+        const particle = new Particle({
+            texture:  texTriangulo,
+            x:        Math.random() * width,
+            y:        Math.random() * height,
+            scaleX:   escala,
+            scaleY:   escala,
+            rotation: Math.random() * Math.PI * 2,
+            alpha:    Math.random() * 0.5 + 0.2,
+            anchorX:  0.5,
+            anchorY:  0.5,
+        })
+        container.addParticle(particle)
 
-        // si sale por un lado, reaparece por el otro
-        if (p.x < 0) p.x = canvas.width
-        if (p.x > canvas.width) p.x = 0
-        if (p.y < 0) p.y = canvas.height
-        if (p.y > canvas.height) p.y = 0
-
-        // dibujamos la partícula como un triángulo con rotación aleatoria
-        ctx.save()
-        ctx.translate(p.x, p.y)
-        ctx.rotate(p.rotacion)
-        ctx.beginPath()
-        ctx.moveTo(0, -p.radio * 2)
-        ctx.lineTo(p.radio * 1.73, p.radio)
-        ctx.lineTo(-p.radio * 1.73, p.radio)
-        ctx.closePath()
-        ctx.fillStyle = `rgba(220, 220, 220, ${p.opacidad})`
-        ctx.fill()
-        ctx.restore()
+        return {
+            particle,
+            vx:       (Math.random() - 0.5) * 0.4,
+            vy:       (Math.random() - 0.5) * 0.4,
+            rotSpeed: (Math.random() - 0.5) * 0.01,
+        }
     })
+
+    return { container, particulas }
+}
+
+// === SETUP DE PARTÍCULAS DE LETRAS =========================================
+
+/**
+ * Lee los píxeles del texto renderizado en un canvas oculto 2D
+ * y devuelve las posiciones donde hay letra.
+ * Este trabajo ocurre solo una vez al montar, no en el loop.
+ * @param {number} width
+ * @param {number} height
+ * @param {string} linea1
+ * @param {string} linea2
+ * @returns {{ x: number, y: number }[]}
+ */
+function leerPosicionesLetras(width, height, linea1, linea2)
+{
+    const canvasOculto = document.createElement('canvas')
+    canvasOculto.width  = width
+    canvasOculto.height = height
+    const ctx = canvasOculto.getContext('2d')
+    if (!ctx) return []
+
+    const tamano     = Math.min(width / 5, 200)
+    const separacion = tamano * 1.2
+
+    ctx.font         = `bold ${tamano}px sans-serif`
+    ctx.fillStyle    = '#F5A623'
+    ctx.textAlign    = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(linea1, width / 2, height / 2 - separacion / 2)
+    ctx.fillText(linea2, width / 2, height / 2 + separacion / 2)
+
+    const { data } = ctx.getImageData(0, 0, width, height)
+    const posiciones = []
+
+    for (let y = 0; y < height; y += 6)
+        for (let x = 0; x < width; x += 6)
+            if (data[(y * width + x) * 4 + 3] > 128)
+                posiciones.push({ x, y })
+
+    return posiciones
 }
 
 /**
- * Dibuja los píxeles que forman las letras, con idle y distorsión por ratón
- * @param {CanvasRenderingContext2D} ctx
+ * Crea los sprites de glow + core para cada posición de letra
+ * y los anima con GSAP hacia su destino.
+ * @param {{ texGlow: Texture, texCore: Texture }} texturas
+ * @param {{ x: number, y: number }[]} posicionesLetras
+ * @param {number} width
+ * @param {number} height
+ * @returns {{ containerLetras: Container, particulasLetras: PartiiculaLetra[] }}
+ */
+function crearParticulasLetras({ texGlow, texCore }, posicionesLetras, width, height)
+{
+    const containerLetras = new Container()
+
+    const particulasLetras = posicionesLetras.map(destino =>
+    {
+        const spriteGlow = new Sprite(texGlow)
+        spriteGlow.anchor.set(0.5)
+        spriteGlow.alpha = 0
+
+        const spriteCore = new Sprite(texCore)
+        spriteCore.anchor.set(0.5)
+        spriteCore.alpha = 0
+
+        containerLetras.addChild(spriteGlow)
+        containerLetras.addChild(spriteCore)
+
+        const p = {
+            spriteGlow,
+            spriteCore,
+            x:        Math.random() * width,
+            y:        Math.random() * height,
+            destinoX: destino.x,
+            destinoY: destino.y,
+            progreso: 0,
+            opacidad: 0,
+            offsetX:  0,
+            offsetY:  0,
+            fase:     Math.random() * Math.PI * 2,
+        }
+
+        gsap.to(p, {
+            progreso: 1,
+            opacidad: 1,
+            duration: 2.5,
+            delay:    Math.random() * 1.85,
+            ease:     'power2.out',
+        })
+
+        return p
+    })
+
+    return { containerLetras, particulasLetras }
+}
+
+// === LOOP DE ANIMACIÓN =====================================================
+
+/**
+ * Actualiza posición y rotación de cada partícula de fondo.
+ * @param {Particula[]} particulas
+ * @param {number} width
+ * @param {number} height
+ */
+function tickParticulasFondo(particulas, width, height)
+{
+    for (const p of particulas)
+    {
+        p.particle.x        += p.vx
+        p.particle.y        += p.vy
+        p.particle.rotation += p.rotSpeed
+
+        if (p.particle.x < 0)      p.particle.x = width
+        if (p.particle.x > width)  p.particle.x = 0
+        if (p.particle.y < 0)      p.particle.y = height
+        if (p.particle.y > height) p.particle.y = 0
+    }
+}
+
+/**
+ * Actualiza posición, idle y distorsión por ratón de cada partícula de letra.
  * @param {PartiiculaLetra[]} particulasLetras
  * @param {number} ratonX
  * @param {number} ratonY
  */
-export function dibujarParticulasLetras(ctx, particulasLetras, ratonX, ratonY)
+function tickParticulasLetras(particulasLetras, ratonX, ratonY)
 {
-    ctx.shadowBlur  = 8
-    ctx.shadowColor = '#F5A623'
+    const t = gsap.ticker.time
 
-    particulasLetras.forEach(p =>
+    for (const p of particulasLetras)
     {
-        // posición interpolada según el progreso
         const x = p.x + (p.destinoX - p.x) * p.progreso
         const y = p.y + (p.destinoY - p.y) * p.progreso
 
-        // idle oscilando para que los píxeles no estén quietos del todo
-        const idleX = Math.sin(gsap.ticker.time * 2 + p.fase) * 1.5
-        const idleY = Math.cos(gsap.ticker.time * 1.5 + p.fase) * 1.5
+        const idleX = Math.sin(t * 2   + p.fase) * 1.5
+        const idleY = Math.cos(t * 1.5 + p.fase) * 1.5
 
-        // distorsión: calculamos distancia al ratón
-        const dx = x - ratonX
-        const dy = y - ratonY
+        const dx        = x - ratonX
+        const dy        = y - ratonY
         const distancia = Math.sqrt(dx * dx + dy * dy)
-        const radio = 167  // radio de influencia del ratón (sixeven jaja)
-
-        // calculamos el offset objetivo según la distancia al ratón
-        let targetOffsetX = 0
-        let targetOffsetY = 0
+        const radio     = 167
 
         if (distancia < radio && distancia > 0)
         {
-            const fuerza = (1 - distancia / radio) * 30
-            targetOffsetX = (dx / distancia) * fuerza
-            targetOffsetY = (dy / distancia) * fuerza
-        }
-
-        // lerp asimétrico: rápido al distorsionar, lento al volver
-        if (distancia < radio && distancia > 0)
-        {
-            p.offsetX += (targetOffsetX - p.offsetX) * 0.15
-            p.offsetY += (targetOffsetY - p.offsetY) * 0.15
+            const fuerza  = (1 - distancia / radio) * 30
+            p.offsetX    += ((dx / distancia) * fuerza - p.offsetX) * 0.10
+            p.offsetY    += ((dy / distancia) * fuerza - p.offsetY) * 0.10
         }
         else
         {
-            p.offsetX += (0 - p.offsetX) * 0.02
-            p.offsetY += (0 - p.offsetY) * 0.02
+            p.offsetX += (0 - p.offsetX) * 0.01
+            p.offsetY += (0 - p.offsetY) * 0.01
         }
 
-        ctx.globalAlpha = p.opacidad
-        ctx.fillStyle   = '#F5A623'
-        ctx.fillRect(x + p.offsetX + idleX - 2, y + p.offsetY + idleY - 2, 4, 4)
-    })
+        const fx = x + p.offsetX + idleX
+        const fy = y + p.offsetY + idleY
 
-    ctx.globalAlpha = 1
-    ctx.shadowBlur  = 0
+        // cuánto se ha desplazado respecto al destino (0 = quieto, 1 = máximo)
+        const desplazamiento = Math.min(Math.sqrt(p.offsetX ** 2 + p.offsetY ** 2) / 30, 1)
+
+        // agitación extra que aumenta con el desplazamiento
+        const glitchX = desplazamiento > 0.1 ? (Math.random() - 0.5) * desplazamiento * 8 : 0
+        const glitchY = desplazamiento > 0.1 ? (Math.random() - 0.5) * desplazamiento * 8 : 0
+
+        // por debajo del umbral se queda dorado, por encima glitchea
+        let tint = 0xF5A623
+
+        const colores = [
+            0xFF0000,  // rojo puro — máximo contraste con el dorado
+            0x00FFFF,  // cian puro — complementario directo del rojo
+            0xFFFFFF,  // blanco quemado — destaca sobre el fondo oscuro
+        ]
+
+        if (desplazamiento > 0.15)
+        {
+            tint = colores[Math.floor(Math.random() * 3)]
+        }
+
+        // glow: semitransparente, simula el halo sin shadowBlur
+        p.spriteGlow.x     = fx + glitchX
+        p.spriteGlow.y     = fy + glitchY
+        p.spriteGlow.alpha = p.opacidad * 0.35
+        p.spriteGlow.tint  = tint
+
+        // core: píxel nítido encima
+        p.spriteCore.x     = fx + glitchX
+        p.spriteCore.y     = fy + glitchY
+        p.spriteCore.alpha = p.opacidad
+        p.spriteCore.tint  = tint
+    }
 }
 
+// === EXPORT ================================================================
+
 /**
- * Efecto CRT: líneas de escaneo horizontales sobre todo el canvas
- * @param {CanvasRenderingContext2D} ctx
- * @param {HTMLCanvasElement} canvas
+ * Inicializa la aplicación Pixi y monta toda la escena del intro.
+ * Devuelve una función de cleanup para llamar desde onDestroy de Svelte.
+ * @param {HTMLDivElement} contenedor
+ * @param {string} linea1
+ * @param {string} linea2
+ * @returns {Promise<() => void>}
  */
-export function dibujarScanlines(ctx, canvas)
+export async function iniciarIntro(contenedor, linea1, linea2)
 {
-    // cada 4px una línea semitransparente oscura, le da aurilla uwu
-    for (let y = 0; y < canvas.height; y += 4)
+    // === PIXI APP ============================================================
+    const app = new Application()
+    await app.init({
+        resizeTo:    contenedor,
+        background:  0x0a0a0a,
+        antialias:   false,
+        resolution:  Math.min(window.devicePixelRatio, 2),
+        autoDensity: true,
+    })
+    contenedor.appendChild(app.canvas)
+
+    const { width, height } = app.screen
+
+    // === TEXTURAS (GENERADAS UNA SOLA VEZ) ==================================
+    const texTriangulo         = crearTexturaTriangulo(app)
+    const { texGlow, texCore } = crearTexturasLetra(app)
+
+    // === CAPA 1: PARTÍCULAS DE FONDO ========================================
+    const { container: containerFondo, particulas } = crearParticulasFondo(app, texTriangulo, 400)
+    app.stage.addChild(containerFondo)
+
+    // === CAPA 2: PARTÍCULAS DE LETRAS =======================================
+    const posicionesLetras = leerPosicionesLetras(width, height, linea1, linea2)
+    const { containerLetras, particulasLetras } = crearParticulasLetras({ texGlow, texCore }, posicionesLetras, width, height)
+    app.stage.addChild(containerLetras)
+
+    // === CAPA 3: EFECTO CRT ==================================================
+    app.stage.addChild(crearSpriteScanlines(app))
+
+    // === RATÓN ===============================================================
+    let ratonX = -1000
+    let ratonY = -1000
+    const onMouseMove = (/** @type {MouseEvent} */ e) =>
     {
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.15)'
-        ctx.fillRect(0, y, canvas.width, 2)
+        ratonX = e.clientX
+        ratonY = e.clientY
+    }
+    contenedor.addEventListener('mousemove', onMouseMove)
+
+    // === TICKER ==============================================================
+    app.ticker.add(() =>
+    {
+        tickParticulasFondo(particulas, app.screen.width, app.screen.height)
+        tickParticulasLetras(particulasLetras, ratonX, ratonY)
+    })
+
+    // === CLEANUP =============================================================
+    return () =>
+    {
+        contenedor.removeEventListener('mousemove', onMouseMove)
+        app.destroy(true, { children: true, texture: true })
     }
 }
