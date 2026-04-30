@@ -41,5 +41,6 @@ alegria_sonora/
 ```
 
 ## Licencia
+
 © 2026 Mark Sandiumenge Villoria. El código de este proyecto está bajo licencia [MIT + Commons Clause](https://commonsclause.com/), lo que permite su uso libre pero prohíbe su uso comercial.  
 Las imágenes, vídeos y demás contenido pertenecen a sus respectivos organizadores y autores y es usado en este proyecto con el permiso de los mismos.
