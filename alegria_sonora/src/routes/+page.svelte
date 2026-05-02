@@ -1,14 +1,23 @@
 <script>
+    import Splash from '$lib/components/Splash.svelte'
     import Intro from '$lib/components/Intro.svelte'
     let { data } = $props()  // le metemos los datos del page.server.js
+    let fase = $state('splash')
 </script>
 
-<Intro /> <!-- El componente intro, está en src/lib/components -->
+<!-- Los componentes de svelte están en src/lib/components -->
+{#if fase === 'splash' || fase === 'fadiendo'}
+    <Splash onFadeStart={() => fase = 'fadiendo'} onDone={() => fase = 'intro'} />
+{/if}
+
+{#if fase === 'fadiendo' || fase === 'intro'}
+    <Intro />
+{/if}
 
 <pre>
     <!--
         null es para no filtrar nada, que muestre todo
-        2 es la indentación
+        y el numero es la indentación
     -->
     <!-- {JSON.stringify(data, null, 4)} -->
     Edición:

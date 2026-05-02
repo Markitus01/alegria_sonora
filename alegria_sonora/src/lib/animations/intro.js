@@ -3,7 +3,7 @@ import gsap from 'gsap'
 
 /**
  * @typedef {{ particle: Particle, vx: number, vy: number, rotSpeed: number }} Particula
- * @typedef {{ spriteGlow: Sprite, spriteCore: Sprite, x: number, y: number, destinoX: number, destinoY: number, progreso: number, opacidad: number, offsetX: number, offsetY: number, fase: number }} PartiiculaLetra
+ * @typedef {{ spriteGlow: Sprite, spriteCore: Sprite, x: number, y: number, destinoX: number, destinoY: number, progreso: number, opacidad: number, offsetX: number, offsetY: number, linea: number, faseAleatoria: number }} ParticulaLetra
  */
 
 // === TEXTURAS BASE (SE GENERAN UNA SOLA VEZ) ================================
@@ -119,7 +119,7 @@ function crearParticulasFondo(app, texTriangulo, NUM)
  * @param {number} height
  * @param {string} linea1
  * @param {string} linea2
- * @returns {{ x: number, y: number }[]}
+ * @returns {{ x: number, y: number, linea: number }[]}
  */
 function leerPosicionesLetras(width, height, linea1, linea2)
 {
@@ -145,7 +145,7 @@ function leerPosicionesLetras(width, height, linea1, linea2)
     for (let y = 0; y < height; y += 6)
         for (let x = 0; x < width; x += 6)
             if (data[(y * width + x) * 4 + 3] > 128)
-                posiciones.push({ x, y })
+                posiciones.push({ x, y, linea: y < height / 2 ? 1 : 2 })
 
     return posiciones
 }
@@ -154,10 +154,10 @@ function leerPosicionesLetras(width, height, linea1, linea2)
  * Crea los sprites de glow + core para cada posición de letra
  * y los anima con GSAP hacia su destino.
  * @param {{ texGlow: Texture, texCore: Texture }} texturas
- * @param {{ x: number, y: number }[]} posicionesLetras
+ * @param {{ x: number, y: number, linea: number }[]} posicionesLetras
  * @param {number} width
  * @param {number} height
- * @returns {{ containerLetras: Container, particulasLetras: PartiiculaLetra[] }}
+ * @returns {{ containerLetras: Container, particulasLetras: ParticulaLetra[] }}
  */
 function crearParticulasLetras({ texGlow, texCore }, posicionesLetras, width, height)
 {
@@ -179,15 +179,16 @@ function crearParticulasLetras({ texGlow, texCore }, posicionesLetras, width, he
         const p = {
             spriteGlow,
             spriteCore,
-            x:        Math.random() * width,
-            y:        Math.random() * height,
-            destinoX: destino.x,
-            destinoY: destino.y,
-            progreso: 0,
-            opacidad: 0,
-            offsetX:  0,
-            offsetY:  0,
-            fase:     Math.random() * Math.PI * 2,
+            x:              Math.random() * width,
+            y:              Math.random() * height,
+            destinoX:       destino.x,
+            destinoY:       destino.y,
+            progreso:       0,
+            opacidad:       0,
+            offsetX:        0,
+            offsetY:        0,
+            linea:          destino.linea,
+            faseAleatoria:  (Math.random() - 0.5) * 1.2 // offset aleatorio pa cada partícula
         }
 
         gsap.to(p, {
@@ -229,21 +230,29 @@ function tickParticulasFondo(particulas, width, height)
 
 /**
  * Actualiza posición, idle y distorsión por ratón de cada partícula de letra.
- * @param {PartiiculaLetra[]} particulasLetras
+ * @param {ParticulaLetra[]} particulasLetras
  * @param {number} ratonX
  * @param {number} ratonY
  */
 function tickParticulasLetras(particulasLetras, ratonX, ratonY)
 {
-    const t = gsap.ticker.time
+    const t = performance.now() / 1000 // gsap.ticker.time se pausaba cuando todas las particulas habían llegado a su destino
 
     for (const p of particulasLetras)
     {
         const x = p.x + (p.destinoX - p.x) * p.progreso
         const y = p.y + (p.destinoY - p.y) * p.progreso
 
-        const idleX = Math.sin(t * 2   + p.fase) * 1.5
-        const idleY = Math.cos(t * 1.5 + p.fase) * 1.5
+        /**
+         * lambda controla cuantas olas hay en cada palabra, más pequeño = más olas y viceversa
+         * signo controla la dirección del viaje de la ola, -1 de izqueirda a derecha y 1 de derecha a izquierda
+         * idle controla el desplazamiento de cada particula en cada eje, con signo * p.destino / lambda hacemos que
+         * cada columna de partículas este desfasada con sus vecinas y así hacemos el efecto de ola.
+         */
+        const lambda = 60 
+        const signo  = p.linea === 1 ? -1 : 1
+        const idleX  = Math.cos(t * 2 + signo * p.destinoX / lambda + p.faseAleatoria) * 1.6 * p.progreso
+        const idleY  = Math.sin(t * 2 + signo * p.destinoX / lambda + p.faseAleatoria) * 6   * p.progreso
 
         const dx        = x - ratonX
         const dy        = y - ratonY
@@ -275,13 +284,14 @@ function tickParticulasLetras(particulasLetras, ratonX, ratonY)
         // por debajo del umbral se queda dorado, por encima glitchea
         let tint = 0xF5A623
 
+        // array de colores de las partículas agitadas
         const colores = [
-            0xFF0000,  // rojo puro — máximo contraste con el dorado
-            0x00FFFF,  // cian puro — complementario directo del rojo
-            0xFFFFFF,  // blanco quemado — destaca sobre el fondo oscuro
+            0xFF0000,  // rojo
+            0x00FFFF,  // cian
+            0xFFFFFF,  // blanco
         ]
 
-        if (desplazamiento > 0.15)
+        if (desplazamiento > 0.10)
         {
             tint = colores[Math.floor(Math.random() * 3)]
         }
