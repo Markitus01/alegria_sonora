@@ -310,15 +310,41 @@ function tickParticulasLetras(particulasLetras, ratonX, ratonY)
     }
 }
 
+/**
+ * Envía las particulas a posiciones aleatorias de nuevo, como si se disolviera kla intro
+ * @param {ParticulaLetra[]} particulasLetras
+ * @returns {Promise<void>}
+ */
+function cerrarIntro(particulasLetras)
+{
+    return new Promise(resolve => {
+        const duracion = 1.2
+        const maxDelay = 0.8
+
+        particulasLetras.forEach(p => {
+            const delay = Math.random() * maxDelay
+            gsap.to(p, {
+                progreso: 0,
+                opacidad: 0,
+                duration: duracion,
+                delay,
+                ease: 'power2.in',
+            })
+        })
+
+        gsap.delayedCall(duracion + maxDelay, resolve)
+    })
+}
+
 // === EXPORT ================================================================
 
 /**
  * Inicializa la aplicación Pixi y monta toda la escena del intro.
  * Devuelve una función de cleanup para llamar desde onDestroy de Svelte.
- * @param {HTMLDivElement} contenedor
+ * @param {HTMLElement} contenedor
  * @param {string} linea1
  * @param {string} linea2
- * @returns {Promise<() => void>}
+ * @returns {Promise<{ cleanup: () => void, cerrar: () => Promise<void> }>}
  */
 export async function iniciarIntro(contenedor, linea1, linea2)
 {
@@ -369,9 +395,11 @@ export async function iniciarIntro(contenedor, linea1, linea2)
     })
 
     // === CLEANUP =============================================================
-    return () =>
-    {
-        contenedor.removeEventListener('mousemove', onMouseMove)
-        app.destroy(true, { children: true, texture: true })
+    return {
+        cleanup: () => {
+            contenedor.removeEventListener('mousemove', onMouseMove)
+            app.destroy(true, { children: true, texture: true })
+        },
+        cerrar: () => cerrarIntro(particulasLetras),
     }
 }

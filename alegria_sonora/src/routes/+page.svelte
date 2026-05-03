@@ -1,26 +1,33 @@
 <script>
     import Splash from '$lib/components/Splash.svelte'
     import Intro from '$lib/components/Intro.svelte'
-    let { data } = $props()  // le metemos los datos del page.server.js
+    import MusicControl from '$lib/components/MusicControl.svelte'
+    let { data } = $props()
     let fase = $state('splash')
 </script>
 
-<!-- Los componentes de svelte están en src/lib/components -->
-{#if fase === 'splash' || fase === 'fadiendo'}
-    <Splash onFadeStart={() => fase = 'fadiendo'} onDone={() => fase = 'intro'} />
+<Splash onDone={() => fase = 'intro'} />
+
+<!-- el control de música aparece en cuanto el usuario ha interactuado -->
+{#if fase !== 'splash'}
+    <MusicControl />
 {/if}
 
-{#if fase === 'fadiendo' || fase === 'intro'}
-    <Intro />
+{#if fase === 'intro'}
+    <Intro onDone={() => fase = 'home'} />
 {/if}
 
-<pre>
+{#if fase === 'intro' || fase === 'home'}
+    <!-- home -->
+{/if}
+
+<!-- <pre> -->
     <!--
         null es para no filtrar nada, que muestre todo
         y el numero es la indentación
     -->
     <!-- {JSON.stringify(data, null, 4)} -->
-    Edición:
+    <!-- Edición:
     {JSON.stringify(data.edicion, null, 4)}
 
     Ubicación:
@@ -29,6 +36,6 @@
     Galeria:
     {JSON.stringify(data.galeria, null, 4)}
 
-    Todo:
-    {JSON.stringify(data, null, 4)}
-</pre>
+    Todito:
+    {JSON.stringify(data, null, 4)} -->
+<!-- </pre> -->
